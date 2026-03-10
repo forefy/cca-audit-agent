@@ -212,7 +212,7 @@ The skill file at `.claude/commands/scan-cca.md` is self-contained. You can:
 ### 33 Audits
 
 - [33 Audits — Security Considerations for CCA Auditors](https://33audits.hashnode.dev/security-considerations-for-auditors)
-- [33 Audits — CCA Audit Thread](https://x.com/33audits/status/2029781103435768165) — Summary of CCA-specific attack vectors
+- [33 Audits — Uniswap's CCA Explained](https://x.com/33audits/status/2029781103435768165) — Summary of CCA-specific attack vectors
 - [33 Audits — Flow Protocol Audit Report (PDF)](https://github.com/leeftk/audit-reports/blob/main/private%20audits/audit-report-flow.pdf)
 - [33audits.xyz](https://www.33audits.xyz/) — Smart contract auditing services
 
