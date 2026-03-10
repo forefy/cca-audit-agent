@@ -16,7 +16,9 @@
   ╚═════╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝
 ```
 
-A Claude Code skill that scans Solidity contracts for [Uniswap Continuous Clearing Auction](https://github.com/Uniswap/continuous-clearing-auction) vulnerabilities. Finds bugs in CCA forks, protocols built on CCA, and unsafe auction deployments.
+An AI agent that scans Solidity contracts for [Uniswap Continuous Clearing Auction](https://github.com/Uniswap/continuous-clearing-auction) vulnerabilities. Finds bugs in CCA forks, protocols built on CCA, and unsafe auction deployments.
+
+**Works with:** Claude Code · Cursor · Windsurf · GitHub Copilot
 
 ## What it does
 
@@ -59,47 +61,86 @@ The scanner auto-detects whether it's looking at CCA core code, integration code
 
 ## Requirements
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed and authenticated
+- One of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Cursor](https://cursor.sh), [Windsurf](https://codeium.com/windsurf), or [GitHub Copilot](https://github.com/features/copilot)
 - Solidity source files in the target directory
 
 ## Installation
 
-### Option A: Clone into your project
+### Claude Code (recommended — dual-agent parallel scan)
 
 ```bash
-# From your project root
+# Option 1: curl into your project
 mkdir -p .claude/commands
 curl -o .claude/commands/scan-cca.md \
   https://raw.githubusercontent.com/33Audits/cca-audit-agent/main/.claude/commands/scan-cca.md
+
+# Option 2: clone and point at your code
+git clone https://github.com/33Audits/cca-audit-agent.git
+cd cca-audit-agent
+claude
+# Then: /scan-cca /path/to/your/solidity/project
 ```
 
-### Option B: Clone the repo and point at your code
+### Cursor
 
 ```bash
-git clone https://github.com/33Audits/cca-audit-agent.git
-cd scan-cca
-claude
-# Then run: /scan-cca /path/to/your/solidity/project
+# Copy the rule file into your project
+mkdir -p .cursor/rules
+curl -o .cursor/rules/scan-cca.mdc \
+  https://raw.githubusercontent.com/33Audits/cca-audit-agent/main/.cursor/rules/scan-cca.mdc
 ```
 
-### Option C: Copy the skill file manually
+Then ask Cursor: *"Scan for CCA vulnerabilities"* or *"Run CCA audit"*
 
-Copy `.claude/commands/scan-cca.md` into your project's `.claude/commands/` directory.
+### Windsurf
+
+```bash
+# Copy the rules file to your project root
+curl -o .windsurfrules \
+  https://raw.githubusercontent.com/33Audits/cca-audit-agent/main/.windsurfrules
+```
+
+Then ask Windsurf: *"Scan for CCA vulnerabilities"* or *"Run CCA audit"*
+
+### GitHub Copilot
+
+```bash
+# Copy the instructions file into your project
+mkdir -p .github
+curl -o .github/copilot-instructions.md \
+  https://raw.githubusercontent.com/33Audits/cca-audit-agent/main/.github/copilot-instructions.md
+```
+
+Then ask Copilot: *"Scan for CCA vulnerabilities"* or *"Run CCA audit"*
 
 ## Usage
 
-Inside a Claude Code session:
+### Claude Code (slash command)
 
 ```
-# Scan the current directory
-/scan-cca
-
-# Scan a specific directory
-/scan-cca ./contracts
-
-# Scan an absolute path
-/scan-cca /path/to/protocol/src
+/scan-cca                              # scan current directory
+/scan-cca ./contracts                  # scan specific directory
+/scan-cca /path/to/protocol/src        # scan absolute path
 ```
+
+### Cursor / Windsurf / Copilot (natural language)
+
+Ask your agent:
+- *"Scan this codebase for CCA vulnerabilities"*
+- *"Run a CCA security audit on the contracts in src/"*
+- *"Check these contracts for Uniswap CCA integration bugs"*
+
+### Platform differences
+
+| Feature | Claude Code | Cursor / Windsurf / Copilot |
+|---------|------------|----------------------------|
+| Architecture | Dual-agent parallel (vector scan + adversarial) | Single-agent sequential |
+| Speed | Both passes run simultaneously | One pass at a time |
+| Depth | Two different cognitive strategies catch more bugs | Same vectors, single strategy |
+| Token usage | ~50-80k across both agents | ~30-50k single agent |
+| Invocation | `/scan-cca` slash command | Natural language prompt |
+
+Claude Code gets the best results because it runs two agents with different analysis strategies in parallel. Cursor/Windsurf/Copilot run the same vectors but as a single sequential pass.
 
 ### What happens when you run it
 

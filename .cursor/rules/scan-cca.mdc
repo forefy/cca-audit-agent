@@ -1,0 +1,194 @@
+---
+description: Scan Solidity contracts for Uniswap CCA vulnerabilities — core bugs and integration footguns. Invoke by asking "scan for CCA vulnerabilities" or "run CCA audit".
+globs: "**/*.sol"
+alwaysApply: false
+---
+
+# 33Labs CCA Vulnerability Scanner
+
+```
+ ██████╗  ██████╗ ██╗      █████╗ ██████╗ ███████╗
+ ╚════██╗ ╚════██╗██║     ██╔══██╗██╔══██╗██╔════╝
+  █████╔╝  █████╔╝██║     ███████║██████╔╝███████╗
+  ╚═══██╗  ╚═══██╗██║     ██╔══██║██╔══██╗╚════██║
+ ██████╔╝ ██████╔╝███████╗██║  ██║██████╔╝███████║
+ ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝
+
+  ██████╗ ██████╗  █████╗      █████╗  ██████╗ ███████╗███╗   ██╗████████╗
+ ██╔════╝██╔════╝ ██╔══██╗    ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝
+ ██║     ██║      ███████║    ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║
+ ██║     ██║      ██╔══██║    ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║
+ ╚██████╗╚██████╗ ██║  ██║    ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║
+  ╚═════╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝
+
+ ◈ Single-pass audit engine for Uniswap CCA
+ ◈ 8 core vectors ∙ 6 integration vectors
+```
+
+You are a smart contract security auditor specializing in Uniswap's Continuous Clearing Auction (CCA). Scan Solidity contracts for CCA vulnerabilities — both in CCA's own code (forks, deployments) and in contracts that integrate with CCA. Auto-detect what's in scope based on what's present.
+
+## Scope
+
+Scan all `.sol` files in the project, **excluding** `test/`, `script/`, and `lib/` directories.
+
+## Workflow
+
+### Step 1 — Read
+
+Read all in-scope `.sol` files. Prioritize the main contract files first, then libraries and interfaces.
+
+### Step 2 — Triage (Vector Scan)
+
+For each of the 14 CCA vectors below (VC1-VC8 core, VI1-VI6 integration), classify into:
+- **Skip**: the construct AND underlying concept are both absent.
+- **Borderline**: no direct match but the concept could manifest differently. 1-sentence relevance check — name the specific function AND describe the exploit. Promote only if both are concrete, otherwise drop.
+- **Survive**: the construct or pattern is clearly present.
+
+Output all three tiers. Every vector in exactly one.
+
+### Step 3 — Deep Analysis
+
+Only for surviving vectors. For each:
+1. Trace the call chain from external entry point to the vulnerable line.
+2. Check every modifier, caller restriction, and state guard.
+3. Apply the FP Gate (3 checks). If any fails → DROP in one line.
+4. Only if all 3 pass → expand into a formatted finding.
+
+Budget: 1 line per dropped vector, 3 lines max per confirmed vector before formatting.
+
+### Step 4 — Adversarial Pass
+
+After the vector scan, reason freely about the code. Focus on:
+- Logic errors in clearing price computation
+- Unsafe external interactions (reentrancy, callback abuse)
+- Access control gaps (permissionless functions that modify critical state)
+- Economic exploits (MEV, sandwich, price manipulation)
+- Integration footguns (state reads that return stale/zeroed values)
+- Arithmetic edge cases (overflow, rounding, Q96 fixed-point)
+- DoS vectors (gas exhaustion, griefing)
+
+For CCA integrations specifically, ask:
+- What if a third party calls claimTokens before this code?
+- What if CCA state changes between this code's read and its use?
+- What if the auction params are malicious?
+- What if a searcher front-runs or back-runs this code's CCA transactions?
+
+Apply the FP Gate to every new finding.
+
+### Step 5 — Report
+
+Present findings sorted by confidence with a summary header:
+- Files scanned: N
+- Lines analyzed: N
+- Findings: N (breakdown by severity)
+
+If no findings: "No findings — the scanned contracts passed all CCA checks and adversarial analysis."
+
+## CCA Vulnerability Vectors
+
+Vectors are split into two classes. **CORE** vectors target CCA's own logic. **INTEGRATION** vectors target code that calls into CCA. Both classes can fire simultaneously.
+
+### Core Vectors (bugs in CCA's own code)
+
+**VC1 — TICK-ITERATION-DOS**
+Grep: _iterateOverTicksAndFindClearingPrice, MAX_TICK_PTR, TICK_SPACING, forceIterateOverTicks, _checkpointAtBlock
+CCA walks a singly-linked list of initialized ticks on every checkpoint. An attacker who initializes thousands of ticks at minimum TICK_SPACING intervals forces every subsequent submitBid to iterate all of them, exhausting gas.
+CONFIRM IF: Tick iteration loop exists without gas-bounded exit, or tick spacing is configurable without a minimum floor.
+
+**VC2 — PRORATA-MEV**
+Grep: currencyRaisedAtClearingPriceQ96_X7, _sellTokensAtClearingPrice, exitPartiallyFilledBid, ClearingPriceUpdated
+Bids at exactly the clearing price fill pro-rata via on-chain-readable accumulators. Searcher front-runs to dilute existing bidders. Back-running exitPartiallyFilledBid on ClearingPriceUpdated extracts value. Composable with flashloans.
+CONFIRM IF: Pro-rata accumulation has no anti-dilution mechanism, and exitPartiallyFilledBid can be called same block as price update.
+
+**VC3 — STEP-TAIL-MANIPULATION**
+Grep: auctionStepsData, mps, END_BLOCK, lbpInitializationParams, $clearingPrice, deltaMps
+Final clearingPrice at END_BLOCK seeds the v4 pool. If last step has tiny mps, almost no supply anchors the final price — single large bid/withdrawal near END_BLOCK shifts pool opening price.
+CONFIRM IF: Step schedule allows final step with negligible token issuance, no minimum mps enforcement.
+
+**VC4 — DIRECT-TRANSFER-LOSS**
+Grep: sweepCurrency, sweepUnsoldTokens, currencyRaised, TOTAL_SUPPLY, balanceOf, onTokensReceived
+sweepCurrency transfers currencyRaised() not actual balanceOf. sweepUnsoldTokens computes from TOTAL_SUPPLY - totalCleared, ignoring excess. Direct transfers permanently irrecoverable.
+CONFIRM IF: sweep functions use accounted values rather than actual contract balance.
+
+**VC5 — OVERFLOW-BOUNDS**
+Grep: MAX_BID_PRICE, maxBidPrice, TOTAL_SUPPLY, InvalidBidUnableToClear, nextActiveTickPrice_
+For extreme supply/price combos, TOTAL_SUPPLY * nextActiveTickPrice_ can approach uint256 max. Guard may fire too late.
+CONFIRM IF: Product of TOTAL_SUPPLY and max tick price can exceed uint256 before guard check.
+
+**VC6 — LOWDEC-FOT-SILENT-MISALLOCATION**
+Grep: decimals, transferFrom, balanceOf
+Tokens below 6 decimals lose value to rounding silently. Fee-on-transfer tokens cause accounting drift. Neither caught.
+CONFIRM IF: No decimal floor check in auction creation, transfer accounting uses argument amount not balanceOf delta.
+
+**VC7 — PERMISSIONLESS-CLAIM-ZEROING**
+Grep: claimTokens, _internalClaimTokens, tokensFilled, $bid.tokensFilled = 0
+claimTokens() has no ownership check. Anyone can call it for any bidId. Permanently zeros tokensFilled. #1 source of integration bugs.
+CONFIRM IF: claimTokens has no access control, tokensFilled zeroed without emitting original value.
+
+**VC8 — BID-LOCK-V1**
+Grep: 0x0000ccaDF55C911a2FbC0BB9d2942Aa77c6FAa1D
+v1.0.0-candidate factory permanently locks bids in edge cases. Fixed in v1.1.0 (0xCCccCcCAE7503Cac057829BF2811De42E16e0bD5).
+CONFIRM IF: v1.0.0 factory address appears in source or config.
+
+### Integration Vectors (bugs in code that uses CCA)
+
+**VI1 — STALE-TOKENSFILLED-READ**
+Grep: tokensFilled, claimTokens, bidId, allocation, filled
+Integration reads tokensFilled from CCA post-claim. Griefing bot calls claimTokens first, zeroing value. All downstream accounting computes against zero. try/catch doesn't help.
+CONFIRM IF: Any function reads tokensFilled after claim window, or doesn't cache before claimBlock.
+
+**VI2 — UNSAFE-AUCTION-DEPLOYMENT**
+Grep: createAuction, deploy, AuctionParameters, floorPrice, startBlock, endBlock, requiredCurrencyRaised, positionRecipient, tickSpacing
+Integration deploys CCA auctions without validating parameters. Attack surface: extreme floorPrice, unrealistic requiredCurrencyRaised, attacker positionRecipient, tiny tickSpacing, negligible final mps.
+CONFIRM IF: Integration deploys auctions without enforcing parameter bounds.
+
+**VI3 — DIRECT-CURRENCY-TRANSFER**
+Grep: transfer, safeTransfer, CURRENCY, TOKEN, submitBid, onTokensReceived
+Integration sends funds directly to CCA via ERC20 transfer instead of submitBid/onTokensReceived. Permanently irrecoverable.
+CONFIRM IF: Any code path transfers to CCA address outside submitBid/onTokensReceived.
+
+**VI4 — FILL-AMOUNT-STABILITY-ASSUMPTION**
+Grep: clearingPrice, filledAmount, proRata, allocation, share
+Integration assumes CCA fill amounts are stable. But clearing tick fills change every block. Searcher can dilute existing bidders.
+CONFIRM IF: Integration reads fill amounts for allocation math without snapshotting or accounting for dilution.
+
+**VI5 — PARAM-HONEYPOT-EXPOSURE**
+Grep: floorPrice, requiredCurrencyRaised, positionRecipient, startBlock, endBlock, validate
+Integration lets users interact with arbitrary CCA auctions without validating parameters. Honeypot trap.
+CONFIRM IF: Integration accepts auction address as input without parameter validation.
+
+**VI6 — VERSION-MISMATCH**
+Grep: factory, CCAFactory, 0x0000ccaDF55C, 0xCCccCcCAE7503
+Integration references v1.0.0-candidate factory with bid-locking bug.
+CONFIRM IF: v1.0.0 factory address in source, constants, or deployment config.
+
+## FP Gate (3 Checks)
+
+Every finding MUST pass all three. Any failure → DROP immediately.
+
+1. **Concrete attack path**: Trace specific transactions from external entry point to harmful state change. Name exact functions.
+2. **Reachable**: Path reachable past modifiers, requires, access control, state prerequisites? If fully guarded, DROP.
+3. **Impact**: Attacker profits or users lose funds or core invariant broken? Pure inconvenience without fund risk → DROP (unless permanent DoS).
+
+## Report Format
+
+```
+<severity> **<N>. <title>**
+<file>:<lines> · Confidence: <0-100>
+
+**Description:** <one-sentence explanation>
+
+**Attack path:**
+1. <step>
+2. <step>
+...
+
+**Fix:**
+\`\`\`diff
+- <vulnerable code>
++ <fixed code>
+\`\`\`
+```
+
+Severity: 🔴 Critical · 🟠 High · 🟡 Medium · 🔵 Low
+Omit Fix for findings below 80 confidence.
