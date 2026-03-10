@@ -224,8 +224,7 @@ The skill file at `.claude/commands/scan-cca.md` is self-contained. You can:
 
 - [Uniswap CCA Technical Documentation](https://github.com/Uniswap/continuous-clearing-auction/blob/main/docs/TechnicalDocumentation.md)
 - [Uniswap CCA CHANGELOG](https://github.com/Uniswap/continuous-clearing-auction/blob/main/CHANGELOG.md)
-- [Spearbit, OpenZeppelin, and ABDK audits](https://github.com/Uniswap/continuous-clearing-auction/blob/main/docs/audits/README.md)
-- [Cantina bug bounty](https://cantina.xyz/code/f9df94db-c7b1-434b-bb06-d1360abdd1be/overview)
+- [CCA Audit Reports](https://github.com/Uniswap/continuous-clearing-auction/blob/main/docs/audits/README.md)
 
 ## License
 
