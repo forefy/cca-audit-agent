@@ -39,6 +39,7 @@ For integrations: What if a third party calls claimTokens first? What if CCA sta
 
 **Silent misconfigurations** (no attacker required — missing validation that silently produces wrong results. Nothing reverts, nothing breaks. The math just quietly gives wrong answers for a class of inputs nobody rejects):
 - No decimal floor check on auction token: tokens below 6 decimals lose significant value to Q96 rounding. A 2-decimal token can lose 90%+ per operation. Auction proceeds normally — just silently misallocates.
+- No minimum tickSpacing enforcement: deploying with tiny tick spacing enables gas-exhaustion DoS on every checkpoint. CCA docs recommend "at least 1 basis point of floor price" — guidance only, not enforced on-chain.
 - No minimum mps on final auction step: near-zero last-step issuance makes final clearing price trivially manipulable.
 - No bounds on floorPrice relative to tick extremes: extreme values create auctions where math works but economics are broken.
 
@@ -57,7 +58,7 @@ Summary header (files, lines, finding count by severity), then findings sorted b
 
 **VC5 — OVERFLOW-BOUNDS**: TOTAL_SUPPLY * nextActiveTickPrice_ can approach uint256 max. Guard may fire late. CONFIRM IF: product can overflow before guard.
 
-**VC6 — LOWDEC-FOT-SILENT-MISALLOCATION**: <6 decimal tokens silently misallocate. Fee-on-transfer tokens drift accounting. CONFIRM IF: no decimal floor or balanceOf-delta check.
+**VC6 — LOWDEC-FOT-SILENT-MISALLOCATION**: <6 decimal tokens silently misallocate (Q96 rounding loss). Fee-on-transfer tokens drift accounting. The bug is the ABSENCE of validation — the auction creation path accepts any token without checking decimals. CONFIRM IF: no decimal floor check in constructor/factory OR no balanceOf-delta verification on transfers. Either alone is sufficient.
 
 **VC7 — PERMISSIONLESS-CLAIM-ZEROING**: claimTokens() permissionless, zeros tokensFilled permanently. #1 integration bug source. CONFIRM IF: no access control on claimTokens.
 
@@ -82,9 +83,9 @@ Summary header (files, lines, finding count by severity), then findings sorted b
 ## FP Gate
 
 ALL three must pass or DROP:
-1. **Concrete path**: Trace specific transactions entry→harm. Name functions.
+1. **Concrete path**: Trace specific transactions entry→harm. For missing-validation bugs, path can be: unsafe deployment → normal usage → silent wrong result. Name functions.
 2. **Reachable**: Past all guards? If fully guarded → DROP.
-3. **Impact**: Attacker profits or users lose funds? Inconvenience only → DROP.
+3. **Impact**: Users lose funds, attacker profits, or core invariant broken? Inconvenience only → DROP.
 
 ## Report Format
 

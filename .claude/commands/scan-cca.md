@@ -209,10 +209,10 @@ Do not report if:
 ---
 
 VC6 — LOWDEC-FOT-SILENT-MISALLOCATION
-Grep: decimals, transferFrom, balanceOf
+Grep: transferFrom, balanceOf, TOTAL_SUPPLY, constructor, initialize, CURRENCY, TOKEN
 
 Applicability gate:
-Only proceed if the codebase handles ERC20 tokens without checking decimals at deployment time, or uses nominal transfer amounts without balance-delta verification. CCA docs explicitly state: "Do NOT use with low-decimal (< 6) tokens" and "Fee On Transfer tokens are explicitly not supported" — but neither is enforced on-chain.
+Only proceed if the codebase handles ERC20 tokens (transferFrom, balanceOf, IERC20). The bug is the ABSENCE of validation — do NOT skip just because `decimals()` doesn't appear in the code. That IS the vulnerability: the auction creation path accepts any token without checking its decimals. CCA docs state "Do NOT use with low-decimal (< 6) tokens" and "Fee On Transfer tokens are explicitly not supported" — but neither is enforced on-chain.
 
 Inventory:
 - Check the auction creation path (constructor, factory): is there a require(token.decimals() >= 6) or equivalent?
@@ -476,9 +476,9 @@ Do not report if:
 
 Every potential finding MUST pass all three checks before being reported. If any check fails, DROP immediately.
 
-1. **Concrete attack path**: Can you trace a specific sequence of transactions from an external entry point to a harmful state change or fund loss? Not theoretical — name the exact functions.
+1. **Concrete path**: Can you trace a specific sequence of transactions from an external entry point to a harmful state change or fund loss? For missing-validation bugs (no attacker required), the path can be: unsafe deployment/configuration → normal usage → silent incorrect result. Not theoretical — name the exact functions.
 2. **Reachable**: Is the path actually reachable given modifiers, require statements, access control, and state prerequisites? If fully guarded, DROP.
-3. **Impact**: Does the attacker profit, or do users lose funds, or is a core invariant broken? Pure inconvenience without fund risk → DROP (unless permanent DoS of core functionality).
+3. **Impact**: Do users lose funds, does an attacker profit, or is a core invariant broken? Pure inconvenience without fund risk → DROP (unless permanent DoS of core functionality).
 
 ---
 
@@ -562,6 +562,7 @@ CCA KNOWN HAZARDS (keep in mind while reading):
 SILENT MISCONFIGURATIONS (no attacker required — missing validation that silently produces wrong results):
 These bugs have NO obvious failure signal. Nothing reverts. Nothing breaks. The math just quietly gives wrong answers for a class of inputs that nobody explicitly rejects. Look for these even when there is no adversary to reason about:
 - No decimal floor check on auction token: tokens below 6 decimals lose significant value to Q96 fixed-point rounding. A 2-decimal token can lose 90%+ of value per operation. The auction proceeds normally — it just silently misallocates.
+- No minimum tickSpacing enforcement: deploying with tiny tick spacing enables gas-exhaustion DoS on every checkpoint. CCA docs recommend "at least 1 basis point of floor price" but this is guidance only — not enforced on-chain by the factory or constructor.
 - No minimum mps on final auction step: if the last step has near-zero token issuance, the final clearing price is trivially manipulable with minimal capital.
 - No bounds on floorPrice relative to tick extremes: extreme floorPrice values can create auctions where the math works but the economics are broken (overpay traps, unreachable graduation thresholds).
 

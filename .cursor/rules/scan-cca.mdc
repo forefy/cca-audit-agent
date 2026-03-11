@@ -75,6 +75,7 @@ For CCA integrations specifically, ask:
 
 **Silent misconfigurations** (no attacker required — missing validation that silently produces wrong results. Nothing reverts, nothing breaks. The math just quietly gives wrong answers for a class of inputs that nobody explicitly rejects):
 - No decimal floor check on auction token: tokens below 6 decimals lose significant value to Q96 fixed-point rounding. A 2-decimal token can lose 90%+ of value per operation. The auction proceeds normally — it just silently misallocates.
+- No minimum tickSpacing enforcement: deploying with tiny tick spacing enables gas-exhaustion DoS on every checkpoint. CCA docs recommend "at least 1 basis point of floor price" but this is guidance only — not enforced on-chain by the factory or constructor.
 - No minimum mps on final auction step: if the last step has near-zero token issuance, the final clearing price is trivially manipulable with minimal capital.
 - No bounds on floorPrice relative to tick extremes: extreme floorPrice values can create auctions where the math works but the economics are broken.
 
@@ -200,9 +201,9 @@ Do not report if: Checked arithmetic catches overflow; guard fires before multip
 ---
 
 **VC6 — LOWDEC-FOT-SILENT-MISALLOCATION**
-Grep: decimals, transferFrom, balanceOf
+Grep: transferFrom, balanceOf, TOTAL_SUPPLY, constructor, initialize, CURRENCY, TOKEN
 
-Applicability gate: Only proceed if token handling lacks decimals checks or balance-delta verification. CCA docs: "Do NOT use with low-decimal (< 6) tokens" and "Fee On Transfer tokens are explicitly not supported" — neither enforced on-chain.
+Applicability gate: Only proceed if the codebase handles ERC20 tokens (transferFrom, balanceOf, IERC20). The bug is the ABSENCE of validation — do NOT skip just because `decimals()` doesn't appear in the code. That IS the vulnerability. CCA docs: "Do NOT use with low-decimal (< 6) tokens" and "Fee On Transfer tokens are explicitly not supported" — neither enforced on-chain.
 
 Inventory:
 - Auction creation path: require(token.decimals() >= 6) or equivalent?
@@ -409,9 +410,9 @@ Do not report if: Only v1.1.0 used; v1.0.0 only in comments/deprecation warnings
 
 Every finding MUST pass all three. Any failure → DROP immediately.
 
-1. **Concrete attack path**: Trace specific transactions from external entry point to harmful state change. Name exact functions.
+1. **Concrete path**: Trace specific transactions from external entry point to harmful state change. For missing-validation bugs (no attacker required), the path can be: unsafe deployment/configuration → normal usage → silent incorrect result. Name exact functions.
 2. **Reachable**: Path reachable past modifiers, requires, access control, state prerequisites? If fully guarded, DROP.
-3. **Impact**: Attacker profits or users lose funds or core invariant broken? Pure inconvenience without fund risk → DROP (unless permanent DoS).
+3. **Impact**: Users lose funds, attacker profits, or core invariant broken? Pure inconvenience without fund risk → DROP (unless permanent DoS).
 
 ## Report Format
 
